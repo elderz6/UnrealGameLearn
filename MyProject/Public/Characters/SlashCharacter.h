@@ -15,8 +15,9 @@ class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
 class UGroomComponent;
-class AItem;
 class UAnimMontage;
+class AItem;
+class AWeapon;
 
 UCLASS()
 class MYPROJECT_API ASlashCharacter : public ACharacter
@@ -27,6 +28,10 @@ public:
 	ASlashCharacter();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	UFUNCTION(BlueprintCallable)
+	void SetWeaponCollisionEnabled(ECollisionEnabled::Type CollisionEnabled);
+
 	
 	/*
 	* Input Actions
@@ -60,6 +65,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* DodgeAction;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	AWeapon* EquippedWeapon;
+
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 
@@ -67,9 +75,20 @@ protected:
 		Montage Functions
 	*/
 	void PlayAttackMontage();
+	void PlayEquipMontage(const FName& SectionName);
 
 	UFUNCTION(BlueprintCallable)
 	void AttackEnd();
+
+	UFUNCTION(BlueprintCallable)
+	void SheatheWeapon();
+
+	UFUNCTION(BlueprintCallable)
+	void UnSheatheWeapon();
+
+	bool IsIdle();
+	bool CanUnequip();
+	bool CanEquip();
 
 private:
 	ECharacterState CharacterState = ECharacterState::ECS_Unequipped;
@@ -97,7 +116,8 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category=Montages)
 	UAnimMontage* AttackMontage;
 
-	bool IsIdle();
+	UPROPERTY(EditDefaultsOnly, Category = Montages)
+	UAnimMontage* EquipMontage;
 
 public:
 	FORCEINLINE void SetOverlappingItem(AItem* Item) { OverlappingItem = Item; }

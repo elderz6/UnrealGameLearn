@@ -1,11 +1,12 @@
+#include "Characters/SlashCharacter.h"
 #include <Camera/CameraComponent.h>
 #include <GameFramework/SpringArmComponent.h>
 #include "GameFramework/CharacterMovementComponent.h"
 #include <Components/InputComponent.h>
+#include "Components/BoxComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GroomComponent.h"
-#include "Characters/SlashCharacter.h"
 #include "Items/Item.h"
 #include "Items/Weapons/Weapon.h"
 #include "Animation/AnimMontage.h"
@@ -106,6 +107,17 @@ void ASlashCharacter::PlayAttackMontage()
 	}
 }
 
+void ASlashCharacter::PlayEquipMontage(const FName& SectionName)
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && EquipMontage)
+	{
+		AnimInstance->Montage_Play(EquipMontage);
+		
+		AnimInstance->Montage_JumpToSection(SectionName, EquipMontage);
+	}
+}
+
 void ASlashCharacter::AttackEnd()
 {
 	ActionState = EActionState::EAS_Idle;
@@ -114,6 +126,32 @@ void ASlashCharacter::AttackEnd()
 bool ASlashCharacter::IsIdle()
 {
 	return ActionState == EActionState::EAS_Idle;
+}
+
+bool ASlashCharacter::CanUnequip()
+{
+	return IsIdle() && CharacterState != ECharacterState::ECS_Unequipped && EquippedWeapon;
+}
+
+bool ASlashCharacter::CanEquip()
+{
+	return IsIdle() && CharacterState == ECharacterState::ECS_Unequipped && EquippedWeapon;
+}
+
+void ASlashCharacter::SheatheWeapon()
+{
+	if (EquippedWeapon)
+	{
+		EquippedWeapon->AttachMeshToSocket(GetMesh(), FName("SpineSocket"));
+	}
+}
+
+void ASlashCharacter::UnSheatheWeapon()
+{
+	if (EquippedWeapon)
+	{
+		EquippedWeapon->AttachMeshToSocket(GetMesh(), FName("RightHandSocket"));
+	}
 }
 
 void ASlashCharacter::Jump()
@@ -135,13 +173,30 @@ void ASlashCharacter::Dodge()
 {
 }
 
-void ASlashCharacter::EKeyPressed()
+void ASlashCharacter::EKeyPressed()	
 {
 	AWeapon* OverlappingWeapon = Cast<AWeapon>(OverlappingItem);
 	if (OverlappingWeapon)
 	{
-		OverlappingWeapon->Equip(GetMesh(), FName("RightHandSocket"));
+		OverlappingWeapon->Equip(GetMesh(), FName("RightHandSocket"), this, this);
 		CharacterState = ECharacterState::ECS_EquippedOneHandedWeapon;
+		EquippedWeapon = OverlappingWeapon;
+		OverlappingItem = nullptr;
+	}
+	else
+	{
+		if (CanUnequip())
+		{
+			PlayEquipMontage(FName("Unequip"));
+			CharacterState = ECharacterState::ECS_Unequipped;
+			ActionState = EActionState::EAS_Equipping;
+		}
+		else if(CanEquip())
+		{
+			PlayEquipMontage(FName("Equip"));
+			CharacterState = ECharacterState::ECS_EquippedOneHandedWeapon;
+			ActionState = EActionState::EAS_Equipping;
+		}
 	}
 }
 
@@ -166,4 +221,13 @@ void ASlashCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EnhancedInputComponent->BindAction(DodgeAction, ETriggerEvent::Triggered, this, &ASlashCharacter::Dodge);
 	}
 
+}
+
+void ASlashCharacter::SetWeaponCollisionEnabled(ECollisionEnabled::Type CollisionEnabled)
+{
+	if (EquippedWeapon && EquippedWeapon->GetWeaponBox())
+	{
+		EquippedWeapon->GetWeaponBox()->SetCollisionEnabled(CollisionEnabled);
+		EquippedWeapon->IgnoreActors.Empty();
+	}
 }

@@ -5,6 +5,7 @@
 #include "MyProject/DebugMacros.h"
 #include "Components/SphereComponent.h"
 #include "Characters/SlashCharacter.h"
+#include "NiagaraComponent.h"
 
 // Sets default values
 AItem::AItem() 
@@ -20,6 +21,9 @@ AItem::AItem()
 
 	Sphere = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComponent"));
 	Sphere->SetupAttachment(GetRootComponent());
+
+	SparkleEffect = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Sparkle"));
+	SparkleEffect->SetupAttachment(GetRootComponent());
 }
 
 // Called when the game starts or when spawned

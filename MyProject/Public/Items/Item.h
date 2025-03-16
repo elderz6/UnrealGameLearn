@@ -55,10 +55,13 @@ protected:
 
 	EItemState ItemState;
 
-private:
-
 	UPROPERTY(VisibleAnywhere)
 	USphereComponent* Sphere;
+
+	UPROPERTY(EditAnywhere)
+	class UNiagaraComponent* SparkleEffect;
+
+private:
 
 
 public:	
