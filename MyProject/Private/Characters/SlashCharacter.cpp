@@ -56,6 +56,7 @@ void ASlashCharacter::BeginPlay()
 		}
 	}
 	
+	Tags.Add(FName("SlashCharacter"));
 }
 
 void ASlashCharacter::Move(const FInputActionValue& Value)

@@ -41,6 +41,8 @@ protected:
 	UFUNCTION()
 	void PawnSeen(APawn* SeenPawn);
 
+	void UnbindPatrolEvent();
+
 	void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result);
 	/*
 		Montage Functions
@@ -56,6 +58,8 @@ protected:
 private:
 	void SetHealthBarVisibility(bool Visible);
 
+	void ChasePlayer();
+
 	UPROPERTY()
 	AActor* CombatTarget;
 
@@ -64,6 +68,14 @@ private:
 
 	UPROPERTY(EditAnywhere)
 	double PatrolRadius = 500.f;
+
+	UPROPERTY(EditAnywhere)
+	double AttackRadius = 100.f;
+
+	EEnemyState EnemyState = EEnemyState::EES_Idle;
+
+	class FDelegateHandle MoveCompleteHandle;
+
 	/*
 	*	Components
 	*/
@@ -94,6 +106,8 @@ private:
 
 	FTimerHandle PatrolTimer;
 	void PatrolTimerFinished();
+
+	void BindPatrolEvent();
 
 	UPROPERTY(EditAnywhere, Category = "AI Navigation")
 	float WaitMin = 2.f;

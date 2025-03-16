@@ -22,6 +22,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	UFUNCTION()
 	void OnChaosBreakEvent(const FChaosBreakEvent& BreakEvent);
 
 	UPROPERTY(BlueprintReadWrite)

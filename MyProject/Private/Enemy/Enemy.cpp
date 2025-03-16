@@ -54,12 +54,6 @@ bool AEnemy::InTargetRange(AActor* Target, double Radius)
 	return Distance <= Radius;
 }
 
-void AEnemy::PawnSeen(APawn* SeenPawn)
-{
-	UE_LOG(LogTemp, Warning, TEXT("Pawn Seen"));
-}
-
-
 void AEnemy::PlayHitReactMontage(const FName& SectionName)
 {
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -175,10 +169,45 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
 	}
 
 	CombatTarget = EventInstigator->GetPawn();
+	ChasePlayer();
 
 	return DamageAmount;
 }
+void AEnemy::ChasePlayer()
+{
+	if (CombatTarget)
+	{
+		UnbindPatrolEvent();
+		EnemyState = EEnemyState::EES_Chasing;
+		GetWorldTimerManager().ClearTimer(PatrolTimer);
+		GetCharacterMovement()->MaxWalkSpeed = 300.f;
+		MoveToTarget(CombatTarget);
+	}
+}
 
+void AEnemy::PawnSeen(APawn* SeenPawn)
+{
+	if (EnemyState == EEnemyState::EES_Chasing) return;
+
+	if (SeenPawn->ActorHasTag(FName("SlashCharacter")))
+	{
+		if (InTargetRange(SeenPawn, CombatRadius) && EnemyState != EEnemyState::EES_Attacking)
+		{
+			CombatTarget = SeenPawn;
+			ChasePlayer();
+			UE_LOG(LogTemp, Warning, TEXT("Pawn Seen"));
+		}
+	}
+}
+void AEnemy::BindPatrolEvent()
+{
+	MoveCompleteHandle = EnemyController->GetPathFollowingComponent()->OnRequestFinished.AddUObject(this, &AEnemy::OnMoveCompleted);
+}
+void AEnemy::UnbindPatrolEvent()
+{
+	if (MoveCompleteHandle.IsValid())
+		EnemyController->GetPathFollowingComponent()->OnRequestFinished.Remove(MoveCompleteHandle);
+}
 
 void AEnemy::CheckCombatTarget()
 {
@@ -186,16 +215,33 @@ void AEnemy::CheckCombatTarget()
 	{
 		CombatTarget = nullptr;
 		SetHealthBarVisibility(false);
+		EnemyState = EEnemyState::EES_Idle;
+		GetCharacterMovement()->MaxWalkSpeed = 125.f;
+		RemainingPatrolTargets = PatrolTargets;
+		MoveToTarget(PatrolTarget);
+		BindPatrolEvent();
+		UE_LOG(LogTemp, Warning, TEXT("Return to Patrol"));
+	}
+	else if (!InTargetRange(CombatTarget, AttackRadius) && EnemyState != EEnemyState::EES_Chasing)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Chasing Player"));
+		ChasePlayer();
+	}
+	else if (InTargetRange(CombatTarget, AttackRadius) && EnemyState != EEnemyState::EES_Attacking)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Attacking"));
+		EnemyState = EEnemyState::EES_Attacking;
+		//TODO: Attack Montage
 	}
 }
-
 
 void AEnemy::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result)
 {
 	UE_LOG(LogTemp, Warning, TEXT("Movement Finished"));
-	IsPatrolling = false;
+	EnemyState = EEnemyState::EES_Idle;
 	RemainingPatrolTargets.Remove(PatrolTarget);
-	EnemyController->GetPathFollowingComponent()->OnRequestFinished.RemoveAll(this);
+	UnbindPatrolEvent();
+	GetWorldTimerManager().SetTimer(PatrolTimer, this, &AEnemy::PatrolTimerFinished, 3.f);
 }
 
 void AEnemy::MoveToTarget(AActor* Target)
@@ -205,8 +251,6 @@ void AEnemy::MoveToTarget(AActor* Target)
 	MoveRequest.SetGoalActor(Target);
 	MoveRequest.SetAcceptanceRadius(15.f);
 	EnemyController->MoveTo(MoveRequest);
-	IsPatrolling = true;
-	EnemyController->GetPathFollowingComponent()->OnRequestFinished.AddUObject(this, &AEnemy::OnMoveCompleted);
 }
 
 AActor* AEnemy::ChoosePatrolTarget()
@@ -221,10 +265,11 @@ AActor* AEnemy::ChoosePatrolTarget()
 
 void AEnemy::CheckPatrolTarget()
 {
-	if (IsPatrolling) return;
+	if (EnemyState == EEnemyState::EES_Patrolling) return;
 
 	if (InTargetRange(PatrolTarget, PatrolRadius))
 	{
+		EnemyState = EEnemyState::EES_Patrolling;
 		PatrolTarget = ChoosePatrolTarget();
 		const float WaitTime = FMath::RandRange(WaitMin, WaitMax);
 		GetWorldTimerManager().SetTimer(PatrolTimer, this, &AEnemy::PatrolTimerFinished, WaitTime);
@@ -234,12 +279,14 @@ void AEnemy::CheckPatrolTarget()
 void AEnemy::PatrolTimerFinished()
 {
 	MoveToTarget(PatrolTarget);
+	BindPatrolEvent();
 }
 
 void AEnemy::BeginPlay()
 {
 	Super::BeginPlay();
 	SetHealthBarVisibility(false);
+	GetCharacterMovement()->MaxWalkSpeed = 125.f;
 
 	EnemyController = Cast<AAIController>(GetController());
 	MoveToTarget(PatrolTarget);
@@ -254,8 +301,10 @@ void AEnemy::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	CheckCombatTarget();
-	CheckPatrolTarget();
+	if (EnemyState > EEnemyState::EES_Patrolling)
+		CheckCombatTarget();
+	else
+		CheckPatrolTarget();
 }
 
 void AEnemy::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
