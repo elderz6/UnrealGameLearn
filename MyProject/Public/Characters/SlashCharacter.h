@@ -3,9 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
 #include "InputActionValue.h"
 #include "CharacterTypes.h"
+#include "BaseCharacter.h"
 #include "SlashCharacter.generated.h"
 
 class UCapsuleComponent;
@@ -17,10 +17,9 @@ class UInputAction;
 class UGroomComponent;
 class UAnimMontage;
 class AItem;
-class AWeapon;
 
 UCLASS()
-class MYPROJECT_API ASlashCharacter : public ACharacter
+class MYPROJECT_API ASlashCharacter : public ABaseCharacter
 {
 	GENERATED_BODY()
 
@@ -29,15 +28,11 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	UFUNCTION(BlueprintCallable)
-	void SetWeaponCollisionEnabled(ECollisionEnabled::Type CollisionEnabled);
-
-	
 	/*
 	* Input Actions
 	*/
 	virtual void Jump() override;
-	virtual void Attack() ;
+	virtual void Attack() override;
 	void Dodge();
 	void EKeyPressed();
 
@@ -65,20 +60,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* DodgeAction;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-	AWeapon* EquippedWeapon;
-
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 
 	/*
 		Montage Functions
 	*/
-	void PlayAttackMontage();
+	virtual void PlayAttackMontage(float Playrate = 1) override;
 	void PlayEquipMontage(const FName& SectionName);
 
-	UFUNCTION(BlueprintCallable)
-	void AttackEnd();
+	virtual void AttackEnd() override;
 
 	UFUNCTION(BlueprintCallable)
 	void SheatheWeapon();
@@ -113,8 +104,6 @@ private:
 	/*
 		Animation Montages
 	*/
-	UPROPERTY(EditDefaultsOnly, Category=Montages)
-	UAnimMontage* AttackMontage;
 
 	UPROPERTY(EditDefaultsOnly, Category = Montages)
 	UAnimMontage* EquipMontage;

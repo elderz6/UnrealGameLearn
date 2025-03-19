@@ -84,28 +84,9 @@ void ASlashCharacter::Look(const FInputActionValue& Value)
 	}
 }
 
-void ASlashCharacter::PlayAttackMontage()
+void ASlashCharacter::PlayAttackMontage(float Playrate)
 {
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (AnimInstance && AttackMontage)
-	{
-		AnimInstance->Montage_Play(AttackMontage, 3);
-		const int32 Selection = FMath::RandRange(0, 1);
-		FName SectionName = FName();
-
-		switch (Selection)
-		{
-		case 0:
-			SectionName = FName("Attack1");
-			break;
-		case 1:
-			SectionName = FName("Attack2");
-			break;
-		default:
-			break;
-		}
-		AnimInstance->Montage_JumpToSection(SectionName, AttackMontage);
-	}
+	Super::PlayAttackMontage(3);
 }
 
 void ASlashCharacter::PlayEquipMontage(const FName& SectionName)
@@ -163,6 +144,7 @@ void ASlashCharacter::Jump()
 
 void ASlashCharacter::Attack()
 {
+	Super::Attack();
 	if (IsIdle() && CharacterState != ECharacterState::ECS_Unequipped)
 	{
 		ASlashCharacter::PlayAttackMontage();
@@ -222,13 +204,4 @@ void ASlashCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EnhancedInputComponent->BindAction(DodgeAction, ETriggerEvent::Triggered, this, &ASlashCharacter::Dodge);
 	}
 
-}
-
-void ASlashCharacter::SetWeaponCollisionEnabled(ECollisionEnabled::Type CollisionEnabled)
-{
-	if (EquippedWeapon && EquippedWeapon->GetWeaponBox())
-	{
-		EquippedWeapon->GetWeaponBox()->SetCollisionEnabled(CollisionEnabled);
-		EquippedWeapon->IgnoreActors.Empty();
-	}
 }

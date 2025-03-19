@@ -3,40 +3,39 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
-#include "Interfaces/HitInterface.h"
 #include "Characters/CharacterTypes.h"
+#include "Characters/BaseCharacter.h"
 #include "Enemy.generated.h"
 
 class UHealthBarComponent;
-class UAttributeComponent;
-class UAnimMontage;
 class UPawnSensingComponent;
 class FInputActionValue;
 struct FAIRequestID;
 struct FPathFollowingResult;
+
 UCLASS()
-class MYPROJECT_API AEnemy : public ACharacter, public IHitInterface
+class MYPROJECT_API AEnemy : public ABaseCharacter
 {
 	GENERATED_BODY()
 
 public:
 	AEnemy();
 	virtual void Tick(float DeltaTime) override;
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void GetHit_Implementation(const FVector& ImpactPoint) override;
-
-	void DirectionalHitReact(const FVector& ImpactPoint);
 
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
 protected:
 	virtual void BeginPlay() override;
 
-	void Die();
+	virtual void Die() override;
 
 	bool InTargetRange(AActor* Target, double Radius);
+
+	//Defined in blueprints
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnDie();
 
 	UFUNCTION()
 	void PawnSeen(APawn* SeenPawn);
@@ -44,21 +43,52 @@ protected:
 	void UnbindPatrolEvent();
 
 	void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result);
+
+	virtual void Attack() override;
+
+	virtual void AttackEnd() override;
+
+	bool IsChasing();
+
+	bool IsAttacking();
+
+	bool IsDead();
+
+	bool IsEngaged();
+	
 	/*
 		Montage Functions
 	*/
-	void PlayHitReactMontage(const FName& SectionName);
 
-	void PlayDeathMontage();
+	virtual void PlayAttackMontage(float PlayRate = 1) override;
+
+	virtual void PlayDeathMontage() override;
 
 	UPROPERTY(BlueprintReadOnly)
-	EDeathPose DeathPose = EDeathPose::EDP_Alive;
+	EDeathPose DeathPose;
+
+	UPROPERTY(BlueprintReadOnly)
+	EEnemyState EnemyState;
 
 
 private:
 	void SetHealthBarVisibility(bool Visible);
 
 	void ChasePlayer();
+
+	void ClearPatrolTimer();
+
+	void StartAttackTimer();
+
+	void ClearAttackTimer();
+
+	FTimerHandle AttackTimer;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	float AttackMin = 0.5f;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	float AttackMax = 1.f;
 
 	UPROPERTY()
 	AActor* CombatTarget;
@@ -67,12 +97,16 @@ private:
 	double CombatRadius = 500.f;
 
 	UPROPERTY(EditAnywhere)
-	double PatrolRadius = 500.f;
+	double PatrolRadius = 1000.f;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	double PatrolSpeed = 125.f;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	double ChaseSpeed = 300.f;
 
 	UPROPERTY(EditAnywhere)
 	double AttackRadius = 100.f;
-
-	EEnemyState EnemyState = EEnemyState::EES_Idle;
 
 	class FDelegateHandle MoveCompleteHandle;
 
@@ -80,8 +114,6 @@ private:
 	*	Components
 	*/
 
-	UPROPERTY(VisibleAnywhere)
-	UAttributeComponent* Attributes;
 	UPROPERTY(VisibleAnywhere)
 	UHealthBarComponent* HealthWidget;
 	UPROPERTY(VisibleAnywhere)
@@ -123,20 +155,6 @@ private:
 
 	void CheckPatrolTarget();
 
-
-	/*
-	Animation Montages
-	*/
-	UPROPERTY(EditDefaultsOnly, Category = Montages)
-	UAnimMontage* HitReactMontage;
-
-	UPROPERTY(EditDefaultsOnly, Category = Montages)
-	UAnimMontage* DeathMontage;
-
-	UPROPERTY(EditAnywhere, Category = Sounds)
-	USoundBase* HitSound;
-
-	UPROPERTY(EditAnywhere, Category = VisualEffects)
-	UParticleSystem* HitParticles;
+	void StartPatrol();
 
 };
