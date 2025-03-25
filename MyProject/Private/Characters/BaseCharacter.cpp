@@ -17,12 +17,30 @@ void ABaseCharacter::BeginPlay()
 	
 }
 
+bool ABaseCharacter::IsDead()
+{
+	if (Attributes)
+		return Attributes->GetHealthPercent() == 0.f;
+
+	return false;
+}
+
 void ABaseCharacter::Die()
 {
+	PlayDeathMontage();
+	SetWeaponCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetMesh()->SetGenerateOverlapEvents(false);
+	DisableCapsule();
+	Tags.Add("Dead");
 }
 
 void ABaseCharacter::Attack()
 {
+	if (CombatTarget && CombatTarget->ActorHasTag("Dead"))
+	{
+		CombatTarget = nullptr;
+	}
 }
 
 void ABaseCharacter::CanAttack()
@@ -102,17 +120,29 @@ void ABaseCharacter::DisableCapsule()
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
-void ABaseCharacter::PlayAttackMontage(float PlayRate)
+int32 ABaseCharacter::PlayRandomMontageSection(UAnimMontage* Montage, float PlayRate)
 {
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (AnimInstance && AttackMontage)
+	if (AnimInstance && Montage)
 	{
-		AnimInstance->Montage_Play(AttackMontage, PlayRate);
-		const int32 Selection = FMath::RandRange(1, AttackMontage->GetNumSections());
-		FName SectionName = AttackMontage->GetSectionName(Selection-1);
+		AnimInstance->Montage_Play(Montage, PlayRate);
+		const int32 Selection = FMath::RandRange(1, Montage->GetNumSections());
+		FName SectionName = Montage->GetSectionName(Selection - 1);
+		AnimInstance->Montage_JumpToSection(SectionName, Montage);
 
-		AnimInstance->Montage_JumpToSection(SectionName, AttackMontage);
+		return Selection;
 	}
+	return 0;
+}
+
+void ABaseCharacter::PlayAttackMontage(float PlayRate)
+{
+	PlayRandomMontageSection(AttackMontage, PlayRate);
+}
+
+void ABaseCharacter::PlayDodgeMontage(float PlayRate)
+{
+	PlayRandomMontageSection(DodgeMontage, PlayRate);
 }
 
 void ABaseCharacter::PlayHitReactMontage(const FName& SectionName)
@@ -125,14 +155,16 @@ void ABaseCharacter::PlayHitReactMontage(const FName& SectionName)
 	}
 }
 
-void ABaseCharacter::PlayDeathMontage()
+int32 ABaseCharacter::PlayDeathMontage()
 {
+	const int32 Selection = PlayRandomMontageSection(DeathMontage, 1);
+	DeathPose = EDeathPose(Selection - 1);
+	return Selection;
 }
 
 void ABaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 void ABaseCharacter::SetWeaponCollisionEnabled(ECollisionEnabled::Type CollisionEnabled)
@@ -142,6 +174,18 @@ void ABaseCharacter::SetWeaponCollisionEnabled(ECollisionEnabled::Type Collision
 		EquippedWeapon->GetWeaponBox()->SetCollisionEnabled(CollisionEnabled);
 		EquippedWeapon->IgnoreActors.Empty();
 	}
+
+}
+
+void ABaseCharacter::GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter)
+{
+	PlayHitSound(ImpactPoint);
+	SpawnHitParticles(ImpactPoint);
+
+	if (IsAlive() && Hitter)
+		DirectionalHitReact(Hitter->GetActorLocation());
+	else
+		Die();
 
 }
 

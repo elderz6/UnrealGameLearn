@@ -15,16 +15,18 @@ class MYPROJECT_API AWeapon : public AItem
 protected:
 	virtual void BeginPlay() override;
 
-	virtual void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult) override;
-
-	virtual void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex) override;
-
 	UFUNCTION()
 	void OnBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	bool ActorIsSameType(const FName& Type, AActor* OtherActor);
+
+	void ExecuteGetHit(FHitResult& BoxHit);
 
 	//Defined in blueprints
 	UFUNCTION(BlueprintImplementableEvent)
 	void CreateFields(const FVector& FieldLocation);
+
+	void BoxTrace(FHitResult& BoxHit);
 
 public:
 	TArray<AActor*> IgnoreActors;
@@ -50,5 +52,11 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	float Damage = 50.f;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
+	bool bShowDebug = false;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
+	FVector BoxTraceSize = FVector(10.f);
 
 };

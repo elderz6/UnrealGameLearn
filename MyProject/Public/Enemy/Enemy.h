@@ -3,13 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Characters/CharacterTypes.h"
 #include "Characters/BaseCharacter.h"
 #include "Enemy.generated.h"
 
 class UHealthBarComponent;
 class UPawnSensingComponent;
-class FInputActionValue;
 struct FAIRequestID;
 struct FPathFollowingResult;
 
@@ -22,20 +20,26 @@ public:
 	AEnemy();
 	virtual void Tick(float DeltaTime) override;
 
-	virtual void GetHit_Implementation(const FVector& ImpactPoint) override;
+	virtual void GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter) override;
 
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
 
 protected:
 	virtual void BeginPlay() override;
 
 	virtual void Die() override;
 
+	void SpawnSoul();
+
 	bool InTargetRange(AActor* Target, double Radius);
 
 	//Defined in blueprints
 	UFUNCTION(BlueprintImplementableEvent)
 	void OnDie();
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void RotateTowardsPlayer(bool Rotate);
 
 	UFUNCTION()
 	void PawnSeen(APawn* SeenPawn);
@@ -52,9 +56,11 @@ protected:
 
 	bool IsAttacking();
 
-	bool IsDead();
+	virtual bool IsDead() override;
 
 	bool IsEngaged();
+
+	void SpawnDefaultWeapon();
 	
 	/*
 		Montage Functions
@@ -62,14 +68,10 @@ protected:
 
 	virtual void PlayAttackMontage(float PlayRate = 1) override;
 
-	virtual void PlayDeathMontage() override;
+	virtual int32 PlayDeathMontage() override;
 
-	UPROPERTY(BlueprintReadOnly)
-	EDeathPose DeathPose;
-
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	EEnemyState EnemyState;
-
 
 private:
 	void SetHealthBarVisibility(bool Visible);
@@ -82,6 +84,12 @@ private:
 
 	void ClearAttackTimer();
 
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<class AWeapon> WeaponClass;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<class ASoul> SoulClass;
+
 	FTimerHandle AttackTimer;
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
@@ -89,9 +97,6 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	float AttackMax = 1.f;
-
-	UPROPERTY()
-	AActor* CombatTarget;
 
 	UPROPERTY(EditAnywhere)
 	double CombatRadius = 500.f;
@@ -106,7 +111,7 @@ private:
 	double ChaseSpeed = 300.f;
 
 	UPROPERTY(EditAnywhere)
-	double AttackRadius = 100.f;
+	double AttackRadius = 200.f;
 
 	class FDelegateHandle MoveCompleteHandle;
 
@@ -116,6 +121,7 @@ private:
 
 	UPROPERTY(VisibleAnywhere)
 	UHealthBarComponent* HealthWidget;
+
 	UPROPERTY(VisibleAnywhere)
 	UPawnSensingComponent* PawnSensing;
 

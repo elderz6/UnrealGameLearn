@@ -4,8 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "InputActionValue.h"
-#include "CharacterTypes.h"
 #include "BaseCharacter.h"
+#include "Interfaces/PickupInterface.h"
 #include "SlashCharacter.generated.h"
 
 class UCapsuleComponent;
@@ -17,9 +17,11 @@ class UInputAction;
 class UGroomComponent;
 class UAnimMontage;
 class AItem;
+class ASoul;
+class ATreasure;
 
 UCLASS()
-class MYPROJECT_API ASlashCharacter : public ABaseCharacter
+class MYPROJECT_API ASlashCharacter : public ABaseCharacter, public IPickupInterface
 {
 	GENERATED_BODY()
 
@@ -27,6 +29,14 @@ public:
 	ASlashCharacter();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	
+	virtual void GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter) override;
+	bool IsDodging();
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	
+	virtual void SetOverlappingItem(AItem* Item) override;
+	virtual void AddSouls(ASoul* Souls) override;
+	virtual void AddGold(ATreasure* Treasure) override;
 
 	/*
 	* Input Actions
@@ -34,10 +44,15 @@ public:
 	virtual void Jump() override;
 	virtual void Attack() override;
 	void Dodge();
+	void UpdateStaminaBar();
 	void EKeyPressed();
 
 protected:
 	virtual void BeginPlay() override;
+
+	virtual void Die() override;
+
+	void InitializePlayerOverlay(APlayerController* PlayerController);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputMappingContext* SlashCharacterMappingContext;
@@ -66,6 +81,7 @@ protected:
 	/*
 		Montage Functions
 	*/
+	virtual int32 PlayDeathMontage() override;
 	virtual void PlayAttackMontage(float Playrate = 1) override;
 	void PlayEquipMontage(const FName& SectionName);
 
@@ -80,6 +96,9 @@ protected:
 	bool IsIdle();
 	bool CanUnequip();
 	bool CanEquip();
+	bool HasStamina();
+
+	virtual bool IsDead() override;
 
 private:
 	ECharacterState CharacterState = ECharacterState::ECS_Unequipped;
@@ -101,6 +120,10 @@ private:
 	UPROPERTY(VisibleInstanceOnly)
 	AItem* OverlappingItem;
 
+	void SetHUDHealth();
+
+	class UPlayerOverlay* PlayerOverlay;
+
 	/*
 		Animation Montages
 	*/
@@ -109,7 +132,6 @@ private:
 	UAnimMontage* EquipMontage;
 
 public:
-	FORCEINLINE void SetOverlappingItem(AItem* Item) { OverlappingItem = Item; }
 	FORCEINLINE ECharacterState GetCharacterState() const { return CharacterState; }
-
+	FORCEINLINE EActionState GetActionState() const { return ActionState; }
 };

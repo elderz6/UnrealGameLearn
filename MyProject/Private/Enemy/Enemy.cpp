@@ -9,8 +9,9 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "AIController.h"
 #include "NavigationData.h"
-
+#include "Items/Weapons/Weapon.h"
 #include "MyProject/DebugMacros.h"
+#include "Items/Soul.h"
 
 AEnemy::AEnemy()
 {
@@ -32,7 +33,7 @@ AEnemy::AEnemy()
 
 	PawnSensing = CreateDefaultSubobject<UPawnSensingComponent>(TEXT("PawnSensing"));
 	PawnSensing->SightRadius = 4000.f;
-	PawnSensing->SetPeripheralVisionAngle(45.f);
+	PawnSensing->SetPeripheralVisionAngle(90.f);
 
 	EnemyState = EEnemyState::EES_Idle;
 }
@@ -40,14 +41,32 @@ AEnemy::AEnemy()
 
 void AEnemy::Die()
 {
+	Super::Die();
 	EnemyState = EEnemyState::EES_Dead;
+	SpawnSoul();
 	ClearAttackTimer();
-	PlayDeathMontage();
-	DisableCapsule();
 	SetLifeSpan(5.f);
+	EquippedWeapon->SetLifeSpan(5.f);
+	RotateTowardsPlayer(false);
 	SetHealthBarVisibility(false);
-	GetMesh()->SetGenerateOverlapEvents(false);
+	GetCharacterMovement()->bOrientRotationToMovement = false;
 	OnDie();
+}
+
+void AEnemy::SpawnSoul()
+{
+	UWorld* World = GetWorld();
+
+	if (World && SoulClass)
+	{
+		const FVector SpawnLocation = GetActorLocation() + FVector(0.f, 0.f, 25.f);
+		ASoul* SpawnedSoul = World->SpawnActor<ASoul>(SoulClass, SpawnLocation, GetActorRotation());
+		if (SpawnedSoul)
+		{
+			SpawnedSoul->SetSouls(Attributes->GetSouls());
+			SpawnedSoul->UpdateNiagaraVariables();
+		}
+	}
 }
 
 bool AEnemy::InTargetRange(AActor* Target, double Radius)
@@ -58,25 +77,28 @@ bool AEnemy::InTargetRange(AActor* Target, double Radius)
 }
 
 
-void AEnemy::PlayDeathMontage()
+int32 AEnemy::PlayDeathMontage()
 {
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (AnimInstance && DeathMontage)
-	{
-		const int32 Selection = FMath::RandRange(1, DeathMontage->GetNumSections());
-		FName SectionName = DeathMontage->GetSectionName(Selection-1);
-		DeathPose = EDeathPose(Selection - 1);
+	Super::PlayDeathMontage();
 
-		AnimInstance->Montage_Play(DeathMontage, 1.5);
-		AnimInstance->Montage_JumpToSection(SectionName, DeathMontage);
-	}
+	return 0;
 }
-
 
 void AEnemy::SetHealthBarVisibility(bool Visible)
 {
 	if (HealthWidget)
 		HealthWidget->SetVisibility(Visible);
+}
+
+void AEnemy::SpawnDefaultWeapon()
+{
+	UWorld* World = GetWorld();
+	if (World && WeaponClass)
+	{
+		AWeapon* DefaultWeapon = World->SpawnActor<AWeapon>(WeaponClass);
+		DefaultWeapon->Equip(GetMesh(), FName("RHandSocket"), this, this);
+		EquippedWeapon = DefaultWeapon;
+	}
 }
 
 /*
@@ -85,18 +107,11 @@ void AEnemy::SetHealthBarVisibility(bool Visible)
 
 */
 
-void AEnemy::GetHit_Implementation(const FVector& ImpactPoint)
+void AEnemy::GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter)
 {
-	SetHealthBarVisibility(true);
-	
-	if(IsAlive()) 
-		DirectionalHitReact(ImpactPoint);
-	else
-		Die();
-
-	PlayHitSound(ImpactPoint);
-	SpawnHitParticles(ImpactPoint);
-
+	Super::GetHit_Implementation(ImpactPoint, Hitter);
+	if(!IsDead())
+		SetHealthBarVisibility(true);
 }
 
 float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -112,11 +127,11 @@ float AEnemy::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AC
 
 	return DamageAmount;
 }
+
 void AEnemy::ChasePlayer()
 {
 	if (CombatTarget)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Chasing Player"));
 		UnbindPatrolEvent();
 		EnemyState = EEnemyState::EES_Chasing;
 		ClearAttackTimer();
@@ -129,15 +144,23 @@ void AEnemy::ChasePlayer()
 void AEnemy::Attack()
 {
 	Super::Attack();
-	EnemyState = EEnemyState::EES_Engaged;
+
+	if (CombatTarget == nullptr) return;
+
 	if (!IsDead())
+	{
+		EnemyState = EEnemyState::EES_Engaged;
 		PlayAttackMontage();
+	}
 }
 
 void AEnemy::AttackEnd()
 {
-	EnemyState = EEnemyState::EES_Idle;
-	CheckCombatTarget();
+	if (!IsDead())
+	{
+		EnemyState = EEnemyState::EES_Idle;
+		CheckCombatTarget();
+	}
 }
 
 void AEnemy::PlayAttackMontage(float PlayRate)
@@ -148,7 +171,6 @@ void AEnemy::PlayAttackMontage(float PlayRate)
 
 void AEnemy::StartAttackTimer()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Setting Attack timer"));
 	EnemyState = EEnemyState::EES_Attacking;
 	const float AttackTime = FMath::RandRange(AttackMin, AttackMax);
 	GetWorldTimerManager().SetTimer(AttackTimer, this, &AEnemy::Attack, AttackTime);
@@ -161,21 +183,18 @@ void AEnemy::CheckCombatTarget()
 	{
 		if (!IsEngaged())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Return to Patrol"));
 			StartPatrol();
 			BindPatrolEvent();
 		}
 	}
 	else if (!InTargetRange(CombatTarget, AttackRadius) && !IsChasing())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Chasing if"));
 		if (!IsEngaged()) ChasePlayer();
 	}
 	else if (InTargetRange(CombatTarget, AttackRadius) && !IsEngaged() && !IsDead())
 	{
-		float remain = GetWorldTimerManager().GetTimerRemaining(AttackTimer);
-		if (remain > 0) return;
-		UE_LOG(LogTemp, Warning, TEXT("In Range, Attack"));
+		float Remain = GetWorldTimerManager().GetTimerRemaining(AttackTimer);
+		if (Remain > 0) return;
 		StartAttackTimer();
 	}
 }
@@ -220,6 +239,8 @@ void AEnemy::PawnSeen(APawn* SeenPawn)
 {
 	if (IsChasing() || IsDead() ) return;
 
+	if (SeenPawn->ActorHasTag("Dead")) return;
+
 	if (SeenPawn->ActorHasTag(FName("SlashCharacter")))
 	{
 		if (InTargetRange(SeenPawn, CombatRadius) && !IsAttacking() && !IsEngaged())
@@ -231,14 +252,12 @@ void AEnemy::PawnSeen(APawn* SeenPawn)
 }
 void AEnemy::BindPatrolEvent()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Event bound"));
 	MoveCompleteHandle = EnemyController->GetPathFollowingComponent()->OnRequestFinished.AddUObject(this, &AEnemy::OnMoveCompleted);
 }
 void AEnemy::UnbindPatrolEvent()
 {
 	if (MoveCompleteHandle.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Event unbound"));
 		EnemyController->GetPathFollowingComponent()->OnRequestFinished.Remove(MoveCompleteHandle);
 	}
 }
@@ -248,7 +267,6 @@ void AEnemy::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult&
 	EnemyState = EEnemyState::EES_Idle;
 	RemainingPatrolTargets.Remove(PatrolTarget);
 	UnbindPatrolEvent();
-	UE_LOG(LogTemp, Warning, TEXT("Movement Finished"));
 	GetWorldTimerManager().SetTimer(PatrolTimer, this, &AEnemy::PatrolTimerFinished, 3.f);
 }
 
@@ -257,7 +275,7 @@ void AEnemy::MoveToTarget(AActor* Target)
 	if (EnemyController == nullptr || Target == nullptr) return;
 	FAIMoveRequest MoveRequest;
 	MoveRequest.SetGoalActor(Target);
-	MoveRequest.SetAcceptanceRadius(15.f);
+	MoveRequest.SetAcceptanceRadius(75.f);
 	EnemyController->MoveTo(MoveRequest);
 }
 
@@ -265,12 +283,10 @@ AActor* AEnemy::ChoosePatrolTarget()
 {
 	if (RemainingPatrolTargets.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Targets empty, resetting"));
 		RemainingPatrolTargets = PatrolTargets;
 	}
 	const int32 NumPatrolTargets = RemainingPatrolTargets.Num();
 	const int32 Selection = FMath::RandRange(0, NumPatrolTargets - 1);
-	UE_LOG(LogTemp, Warning, TEXT("Selecting target %d Total targets %d"), Selection, NumPatrolTargets);
 	return RemainingPatrolTargets[Selection];
 }
 
@@ -280,7 +296,6 @@ void AEnemy::CheckPatrolTarget()
 
 	if (InTargetRange(PatrolTarget, PatrolRadius))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Check patrol, set timer"));
 		EnemyState = EEnemyState::EES_Patrolling;
 		PatrolTarget = ChoosePatrolTarget();
 		const float WaitTime = FMath::RandRange(WaitMin, WaitMax);
@@ -294,7 +309,7 @@ void AEnemy::StartPatrol()
 	ClearAttackTimer();
 	CombatTarget = nullptr;
 	SetHealthBarVisibility(false);
-	EnemyState = EEnemyState::EES_Idle;
+	EnemyState = EEnemyState::EES_Patrolling;
 	GetCharacterMovement()->MaxWalkSpeed = PatrolSpeed;
 	RemainingPatrolTargets = PatrolTargets;
 	MoveToTarget(PatrolTarget);
@@ -302,7 +317,6 @@ void AEnemy::StartPatrol()
 
 void AEnemy::PatrolTimerFinished()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Patrol Timer Finished"));
 	MoveToTarget(PatrolTarget);
 }
 
@@ -311,17 +325,19 @@ void AEnemy::BeginPlay()
 	Super::BeginPlay();
 	SetHealthBarVisibility(false);
 	GetCharacterMovement()->MaxWalkSpeed = PatrolSpeed;
-	UE_LOG(LogTemp, Warning, TEXT("Begin Play Set patrol"));
 
 	EnemyController = Cast<AAIController>(GetController());
 	MoveToTarget(PatrolTarget);
 
 	PatrolTarget = ChoosePatrolTarget();
+	SpawnDefaultWeapon();
 
 	if (PawnSensing)
 	{
 		PawnSensing->OnSeePawn.AddDynamic(this, &AEnemy::PawnSeen);
 	}
+
+	Tags.Add(FName("Enemy"));
 }
 
 void AEnemy::Tick(float DeltaTime)

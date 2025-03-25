@@ -16,11 +16,22 @@ public:
 	UAttributeComponent();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	void RegenStamina(float DeltaTime);
+
 	void ReceiveDamage(float Damage);
 
 	float GetHealthPercent();
+	float GetStaminaPercent();
 
 	bool IsAlive();
+
+	void UseStamina(float Cost);
+
+	void AddSouls(int32 Amount);
+	void AddGold(int32 Amount);
+	FORCEINLINE int32 GetGold() const { return Gold; }
+	FORCEINLINE int32 GetSouls() const { return Souls; }
+	FORCEINLINE int32 GetDodgeCost() const { return DodgeCost; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -32,5 +43,23 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
 	float MaxHealth = 100.f;
+
+	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
+	float Stamina = 100.f;
+
+	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
+	float MaxStamina = 100.f;
+
+	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
+	float DodgeCost = 20.f;
+
+	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
+	float StaminaRegenRate = 5.f;
+
+	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
+	int32 Gold;
+
+	UPROPERTY(EditAnywhere, Category = "Actor Attributes")
+	int32 Souls;
 
 };

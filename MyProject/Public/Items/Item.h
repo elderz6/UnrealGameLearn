@@ -53,13 +53,23 @@ protected:
 	UFUNCTION()
 	virtual void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
+	virtual void SpawnPickupSystem();
+
+	virtual void PlayPickupSound();
+
 	EItemState ItemState;
 
 	UPROPERTY(VisibleAnywhere)
 	USphereComponent* Sphere;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	class UNiagaraComponent* SparkleEffect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	class UNiagaraSystem* PickupEffect;
+
+	UPROPERTY(EditAnywhere, Category = Sounds)
+	USoundBase* PickupSound;
 
 private:
 

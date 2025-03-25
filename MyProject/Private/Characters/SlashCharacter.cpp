@@ -3,13 +3,18 @@
 #include <GameFramework/SpringArmComponent.h>
 #include "GameFramework/CharacterMovementComponent.h"
 #include <Components/InputComponent.h>
-#include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GroomComponent.h"
-#include "Items/Item.h"
+#include "Components/AttributeComponent.h"
 #include "Items/Weapons/Weapon.h"
 #include "Animation/AnimMontage.h"
+#include "HUD/PlayerHUD.h"
+#include "HUD/PlayerOverlay.h"
+#include "Items/Item.h"
+#include "Items/Soul.h"
+#include "Items/Treasure.h"
 
 ASlashCharacter::ASlashCharacter()
 {
@@ -22,6 +27,12 @@ ASlashCharacter::ASlashCharacter()
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 600.f, 0.f);
+
+	GetMesh()->SetCollisionObjectType(ECollisionChannel::ECC_WorldDynamic);
+	GetMesh()->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Block);
+	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECollisionResponse::ECR_Overlap);
+	GetMesh()->SetGenerateOverlapEvents(true);
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(GetRootComponent());
@@ -54,9 +65,33 @@ void ASlashCharacter::BeginPlay()
 		{
 			Subsystem->AddMappingContext(SlashCharacterMappingContext, 0);
 		}
+		InitializePlayerOverlay(PlayerController);
 	}
 	
 	Tags.Add(FName("SlashCharacter"));
+}
+
+void ASlashCharacter::Die()
+{
+	Super::Die();
+
+	ActionState = EActionState::EAS_Dead;
+}
+
+void ASlashCharacter::InitializePlayerOverlay(APlayerController* PlayerController)
+{
+	APlayerHUD* PlayerHUD = Cast<APlayerHUD>(PlayerController->GetHUD());
+	if (PlayerHUD)
+	{
+		PlayerOverlay = PlayerHUD->GetPlayerOverlay();
+		if (PlayerOverlay)
+		{
+			PlayerOverlay->SetHealthBarPercent(Attributes->GetHealthPercent());
+			PlayerOverlay->SetStaminaBarPercent(1.f);
+			PlayerOverlay->SetGold(0);
+			PlayerOverlay->SetSouls(0);
+		}
+	}
 }
 
 void ASlashCharacter::Move(const FInputActionValue& Value)
@@ -84,6 +119,13 @@ void ASlashCharacter::Look(const FInputActionValue& Value)
 	}
 }
 
+int32 ASlashCharacter::PlayDeathMontage()
+{
+	Super::PlayDeathMontage();
+
+	return 0;
+}
+
 void ASlashCharacter::PlayAttackMontage(float Playrate)
 {
 	Super::PlayAttackMontage(3);
@@ -102,7 +144,10 @@ void ASlashCharacter::PlayEquipMontage(const FName& SectionName)
 
 void ASlashCharacter::AttackEnd()
 {
-	ActionState = EActionState::EAS_Idle;
+	if (!IsDead())
+	{
+		ActionState = EActionState::EAS_Idle;
+	}
 }
 
 bool ASlashCharacter::IsIdle()
@@ -118,6 +163,16 @@ bool ASlashCharacter::CanUnequip()
 bool ASlashCharacter::CanEquip()
 {
 	return IsIdle() && CharacterState == ECharacterState::ECS_Unequipped && EquippedWeapon;
+}
+
+bool ASlashCharacter::HasStamina()
+{
+	return Attributes && Attributes->GetStaminaPercent() > 0.f;
+}
+
+bool ASlashCharacter::IsDead()
+{
+	return Super::IsDead() || ActionState == EActionState::EAS_Dead;
 }
 
 void ASlashCharacter::SheatheWeapon()
@@ -154,6 +209,23 @@ void ASlashCharacter::Attack()
 
 void ASlashCharacter::Dodge()
 {
+	if (IsDead() || !IsIdle() || !HasStamina()) return;
+
+	if (Attributes)
+	{
+		Attributes->UseStamina(Attributes->GetDodgeCost());
+		UpdateStaminaBar();
+		PlayDodgeMontage();
+		ActionState = EActionState::EAS_Dodging;
+	}
+}
+
+void ASlashCharacter::UpdateStaminaBar()
+{
+	if (Attributes && PlayerOverlay)
+	{
+		PlayerOverlay->SetStaminaBarPercent(Attributes->GetStaminaPercent());
+	}
 }
 
 void ASlashCharacter::EKeyPressed()	
@@ -188,6 +260,11 @@ void ASlashCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (Attributes)
+	{
+		Attributes->RegenStamina(DeltaTime);
+		UpdateStaminaBar();
+	}
 }
 
 void ASlashCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -204,4 +281,58 @@ void ASlashCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EnhancedInputComponent->BindAction(DodgeAction, ETriggerEvent::Triggered, this, &ASlashCharacter::Dodge);
 	}
 
+}
+
+void ASlashCharacter::GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter)
+{
+	if (IsDodging()) return;
+
+	Super::GetHit_Implementation(ImpactPoint, Hitter);
+
+	if(!IsDead())
+		ActionState = EActionState::EAS_HitReaction;
+}
+
+bool ASlashCharacter::IsDodging()
+{
+	return ActionState == EActionState::EAS_Dodging;
+}
+
+float ASlashCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	if (IsDodging()) return 0.f;
+	HandleDamage(DamageAmount);
+	SetHUDHealth();
+	return DamageAmount;
+}
+
+void ASlashCharacter::SetOverlappingItem(AItem* Item)
+{
+	 OverlappingItem = Item; 
+}
+
+void ASlashCharacter::AddSouls(ASoul* Soul)
+{
+	if (Attributes && PlayerOverlay)
+	{
+		Attributes->AddSouls(Soul->GetSouls());
+		PlayerOverlay->SetSouls(Attributes->GetSouls());
+	}
+}
+
+void ASlashCharacter::AddGold(ATreasure* Treasure)
+{
+	if (Attributes && PlayerOverlay)
+	{
+		Attributes->AddGold(Treasure->GetGold());
+		PlayerOverlay->SetGold(Attributes->GetGold());
+	}
+}
+
+void ASlashCharacter::SetHUDHealth()
+{
+	if (PlayerOverlay && Attributes)
+	{
+		PlayerOverlay->SetHealthBarPercent(Attributes->GetHealthPercent());
+	}
 }
